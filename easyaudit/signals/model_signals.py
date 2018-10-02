@@ -14,7 +14,9 @@ from easyaudit.middleware.easyaudit import get_current_request,\
                                            get_current_user
 from easyaudit.models import CRUDEvent
 from easyaudit.settings import REGISTERED_CLASSES, UNREGISTERED_CLASSES,\
-                               WATCH_MODEL_EVENTS, CRUD_DIFFERENCE_CALLBACKS
+                               WATCH_MODEL_EVENTS, CRUD_DIFFERENCE_CALLBACKS,\
+                               IGNORED_DB_ALIASES
+
 from easyaudit.utils import model_delta
 
 
@@ -46,11 +48,15 @@ def should_audit(instance):
 def pre_save(sender, instance, raw, using, update_fields, **kwargs):
     """https://docs.djangoproject.com/es/1.10/ref/signals/#post-save"""
     if raw:
-      # Return if loading Fixtures      
-      return
+        # Return if loading Fixtures
+        return
+
+    # ignore this signal if it is intended for a DB we want to ignore
+    if using in IGNORED_DB_ALIASES:
+        return False
     
     try:
-        with transaction.atomic():
+        with transaction.atomic(using=using):
             if not should_audit(instance):
                 return False
             object_json_repr = serializers.serialize("json", [instance])
@@ -62,7 +68,7 @@ def pre_save(sender, instance, raw, using, update_fields, **kwargs):
 
             # created or updated?
             if not created:
-                old_model = sender.objects.get(pk=instance.pk)
+                old_model = sender.objects.using(using).get(pk=instance.pk)
                 delta = model_delta(old_model, instance)
                 changed_fields = json.dumps(delta)
                 event_type = CRUDEvent.UPDATE
@@ -85,7 +91,7 @@ def pre_save(sender, instance, raw, using, update_fields, **kwargs):
 
             # create crud event only if all callbacks returned True
             if create_crud_event and not created:
-                crud_event = CRUDEvent.objects.create(
+                crud_event = CRUDEvent.objects.using(using).create(
                     event_type=event_type,
                     object_repr=str(instance),
                     object_json_repr=object_json_repr,
@@ -103,11 +109,15 @@ def pre_save(sender, instance, raw, using, update_fields, **kwargs):
 def post_save(sender, instance, created, raw, using, update_fields, **kwargs):
     """https://docs.djangoproject.com/es/1.10/ref/signals/#post-save"""
     if raw:
-      # Return if loading Fixtures      
-      return
+        # Return if loading Fixtures
+        return
+
+    # ignore this signal if it is intended for a DB we want to ignore
+    if using in IGNORED_DB_ALIASES:
+        return False
     
     try:
-        with transaction.atomic():
+        with transaction.atomic(using=using):
             if not should_audit(instance):
                 return False
             object_json_repr = serializers.serialize("json", [instance])
@@ -136,7 +146,7 @@ def post_save(sender, instance, created, raw, using, update_fields, **kwargs):
 
             # create crud event only if all callbacks returned True
             if create_crud_event and created:
-                crud_event = CRUDEvent.objects.create(
+                crud_event = CRUDEvent.objects.using(using).create(
                     event_type=event_type,
                     object_repr=str(instance),
                     object_json_repr=object_json_repr,
@@ -169,8 +179,13 @@ def _m2m_rev_field_name(model1, model2):
 
 def m2m_changed(sender, instance, action, reverse, model, pk_set, using, **kwargs):
     """https://docs.djangoproject.com/es/1.10/ref/signals/#m2m-changed"""
+
+    # ignore this signal if it is intended for a DB we want to ignore
+    if using in IGNORED_DB_ALIASES:
+        return False
+
     try:
-        with transaction.atomic():
+        with transaction.atomic(using=using):
             if not should_audit(instance):
                 return False
 
@@ -207,7 +222,7 @@ def m2m_changed(sender, instance, action, reverse, model, pk_set, using, **kwarg
             if isinstance(user, AnonymousUser):
                 user = None
 
-            crud_event = CRUDEvent.objects.create(
+            crud_event = CRUDEvent.objects.using(using).create(
                 event_type=event_type,
                 object_repr=str(instance),
                 object_json_repr=object_json_repr,
@@ -223,6 +238,11 @@ def m2m_changed(sender, instance, action, reverse, model, pk_set, using, **kwarg
 
 def post_delete(sender, instance, using, **kwargs):
     """https://docs.djangoproject.com/es/1.10/ref/signals/#post-delete"""
+
+    # ignore this signal if it is intended for a DB we want to ignore
+    if using in IGNORED_DB_ALIASES:
+        return False
+
     try:
         with transaction.atomic():
             if not should_audit(instance):
@@ -242,7 +262,7 @@ def post_delete(sender, instance, using, **kwargs):
                 user = None
 
             # crud event
-            crud_event = CRUDEvent.objects.create(
+            crud_event = CRUDEvent.objects.using(using).create(
                 event_type=CRUDEvent.DELETE,
                 object_repr=str(instance),
                 object_json_repr=object_json_repr,
