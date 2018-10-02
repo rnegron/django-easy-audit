@@ -7,6 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.db import transaction
 from django.db.models import signals
+from django.db.utils import DEFAULT_DB_ALIAS
 from django.utils import timezone
 from django.utils.encoding import force_text
 
@@ -15,7 +16,8 @@ from easyaudit.middleware.easyaudit import get_current_request,\
 from easyaudit.models import CRUDEvent
 from easyaudit.settings import REGISTERED_CLASSES, UNREGISTERED_CLASSES,\
                                WATCH_MODEL_EVENTS, CRUD_DIFFERENCE_CALLBACKS,\
-                               IGNORED_DB_ALIASES
+                               IGNORED_DB_ALIASES, USER_MODEL_IS_ONLY_IN_DEFAULT_DB,\
+                               IGNORE_EMPTY_UPDATES
 
 from easyaudit.utils import model_delta
 
@@ -71,13 +73,20 @@ def pre_save(sender, instance, raw, using, update_fields, **kwargs):
                 old_model = sender.objects.using(using).get(pk=instance.pk)
                 delta = model_delta(old_model, instance)
                 changed_fields = json.dumps(delta)
+
+                if IGNORE_EMPTY_UPDATES and (not changed_fields or changed_fields == 'null'):
+                    return False
+
                 event_type = CRUDEvent.UPDATE
 
             # user
             try:
                 user = get_current_user()
                 # validate that the user still exists
-                user = get_user_model().objects.get(pk=user.pk)
+                if USER_MODEL_IS_ONLY_IN_DEFAULT_DB:
+                    user = get_user_model().objects.get(pk=user.pk)
+                else:
+                    user = get_user_model().objects.using(using).get(pk=user.pk)
             except:
                 user = None
 
@@ -98,7 +107,7 @@ def pre_save(sender, instance, raw, using, update_fields, **kwargs):
                     changed_fields=changed_fields,
                     content_type=ContentType.objects.get_for_model(instance),
                     object_id=instance.pk,
-                    user=user,
+                    user=user if using == DEFAULT_DB_ALIAS and USER_MODEL_IS_ONLY_IN_DEFAULT_DB else None,
                     datetime=timezone.now(),
                     user_pk_as_string=str(user.pk) if user else user
                 )
@@ -130,7 +139,10 @@ def post_save(sender, instance, created, raw, using, update_fields, **kwargs):
             try:
                 user = get_current_user()
                 # validate that the user still exists
-                user = get_user_model().objects.get(pk=user.pk)
+                if USER_MODEL_IS_ONLY_IN_DEFAULT_DB:
+                    user = get_user_model().objects.get(pk=user.pk)
+                else:
+                    user = get_user_model().objects.using(using).get(pk=user.pk)
             except:
                 user = None
 
@@ -152,7 +164,7 @@ def post_save(sender, instance, created, raw, using, update_fields, **kwargs):
                     object_json_repr=object_json_repr,
                     content_type=ContentType.objects.get_for_model(instance),
                     object_id=instance.pk,
-                    user=user,
+                    user=user if using == DEFAULT_DB_ALIAS and USER_MODEL_IS_ONLY_IN_DEFAULT_DB else None,
                     datetime=timezone.now(),
                     user_pk_as_string=str(user.pk) if user else user
                 )
@@ -215,7 +227,10 @@ def m2m_changed(sender, instance, action, reverse, model, pk_set, using, **kwarg
             try:
                 user = get_current_user()
                 # validate that the user still exists
-                user = get_user_model().objects.get(pk=user.pk)
+                if USER_MODEL_IS_ONLY_IN_DEFAULT_DB:
+                    user = get_user_model().objects.get(pk=user.pk)
+                else:
+                    user = get_user_model().objects.using(using).get(pk=user.pk)
             except:
                 user = None
 
@@ -228,7 +243,7 @@ def m2m_changed(sender, instance, action, reverse, model, pk_set, using, **kwarg
                 object_json_repr=object_json_repr,
                 content_type=ContentType.objects.get_for_model(instance),
                 object_id=instance.pk,
-                user=user,
+                user=user if using == DEFAULT_DB_ALIAS and USER_MODEL_IS_ONLY_IN_DEFAULT_DB else None,
                 datetime=timezone.now(),
                 user_pk_as_string=str(user.pk) if user else user
             )
@@ -254,7 +269,10 @@ def post_delete(sender, instance, using, **kwargs):
             try:
                 user = get_current_user()
                 # validate that the user still exists
-                user = get_user_model().objects.get(pk=user.pk)
+                if USER_MODEL_IS_ONLY_IN_DEFAULT_DB:
+                    user = get_user_model().objects.get(pk=user.pk)
+                else:
+                    user = get_user_model().objects.using(using).get(pk=user.pk)
             except:
                 user = None
 
@@ -268,7 +286,7 @@ def post_delete(sender, instance, using, **kwargs):
                 object_json_repr=object_json_repr,
                 content_type=ContentType.objects.get_for_model(instance),
                 object_id=instance.pk,
-                user=user,
+                user=user if using == DEFAULT_DB_ALIAS and USER_MODEL_IS_ONLY_IN_DEFAULT_DB else None,
                 datetime=timezone.now(),
                 user_pk_as_string=str(user.pk) if user else user
             )
