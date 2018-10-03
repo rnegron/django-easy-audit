@@ -73,6 +73,9 @@ IGNORED_DB_ALIASES = getattr(settings, 'DJANGO_EASY_AUDIT_IGNORED_DB_ALIASES', [
 # Controls if CRUDEvents of type "UPDATE" will be saved when there are no "changed_fields"
 IGNORE_EMPTY_UPDATES = getattr(settings, 'DJANGO_EASY_AUDIT_IGNORE_EMPTY_UPDATES', False)
 
+#
+USING_DRF = getattr(settings, 'DJANGO_EASY_AUDIT_USING_DRF', False)
+
 # True if the User model resides only in the database referenced by DEFAULT_DB_ALIAS
 USER_MODEL_IS_ONLY_IN_DEFAULT_DB = getattr(settings, 'DJANGO_EASY_AUDIT_USER_MODEL_IS_ONLY_IN_DEFAULT_DB', False)
 

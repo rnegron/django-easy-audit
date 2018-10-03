@@ -24,6 +24,8 @@ This app allows you to keep track of every action taken by your users.
     ```python
     MIDDLEWARE = (
         ...
+        'django.contrib.auth.middleware.AuthenticationMiddleware',
+        ...
         'easyaudit.middleware.easyaudit.EasyAuditMiddleware',
     )
     ```
